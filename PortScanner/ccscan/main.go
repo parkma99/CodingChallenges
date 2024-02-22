@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,21 @@ const MAX_PORT = 65536
 var timeout int
 var parallel_num int
 
+func cidr(cidr string) ([]string, error) {
+	prefix, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return nil, err
+	}
+	var ips []string
+	for addr := prefix.Addr(); prefix.Contains(addr); addr = addr.Next() {
+		ips = append(ips, addr.String())
+	}
+	if len(ips) < 2 {
+		return ips, nil
+	}
+	return ips[:len(ips)-1], nil
+}
+
 type hostList []string
 
 func (hl *hostList) String() string {
@@ -26,10 +42,21 @@ func (hl *hostList) String() string {
 
 func (hl *hostList) Set(value string) error {
 	hosts := strings.Split(strings.TrimSpace(value), ",")
-	new_hl := make([]string, len(hosts))
-	for i, host := range hosts {
-		new_hl[i] = strings.TrimSpace(host)
+	new_hl := make([]string, 0)
+	for _, host := range hosts {
+		host = strings.TrimSpace(host)
+		log.Println(host)
+		if strings.Contains(host, "/") {
+			matches, err := cidr(host)
+			if err != nil {
+				continue
+			}
+			new_hl = append(new_hl, matches...)
+		} else {
+			new_hl = append(new_hl, host)
+		}
 	}
+	log.Println(new_hl)
 	*hl = new_hl
 	return nil
 }
@@ -58,7 +85,6 @@ func tryCreateTCPConnect(host string, port int) {
 }
 func main() {
 	hosts, port, err := cmd()
-	log.Println(hosts, port)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
