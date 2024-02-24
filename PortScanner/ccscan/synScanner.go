@@ -10,54 +10,6 @@ import (
 )
 
 type synScanner struct {
-	host       net.IP
-	timeout    time.Duration
-	checkPorts []uint16
-	parallel   int
-}
-
-func (s *synScanner) new(host string, timeout int, ports []uint16, parallel int) (err error) {
-	s.host = net.ParseIP(host)
-	s.checkPorts = ports
-	s.parallel = parallel
-	s.timeout = time.Duration(timeout) * time.Microsecond
-	return nil
-}
-func (s *synScanner) scan() (ports []uint16, err error) {
-	parallelNum := len(s.checkPorts)
-	if s.parallel > 0 && s.parallel < parallelNum {
-		parallelNum = s.parallel
-	}
-	inputs := make(chan uint16, 100)
-	results := make(chan uint16)
-
-	for i := 0; i < parallelNum; i++ {
-		go func(ports <-chan uint16, result chan<- uint16) {
-			for port := range ports {
-				opened := s.checker(port)
-				if opened {
-					result <- port
-				} else {
-					result <- 0
-				}
-			}
-		}(inputs, results)
-	}
-	go func() {
-		for _, p := range s.checkPorts {
-			inputs <- p
-		}
-	}()
-
-	for i := 0; i < len(s.checkPorts); i++ {
-		port := <-results
-		if port != 0 {
-			ports = append(ports, port)
-		}
-	}
-	close(inputs)
-	close(results)
-	return
 }
 
 func localIPPort(dstip net.IP) (net.IP, int) {
@@ -74,9 +26,9 @@ func localIPPort(dstip net.IP) (net.IP, int) {
 	return nil, -1
 }
 
-func (s *synScanner) checker(port uint16) bool {
+func (s *synScanner) checker(config *ccScanConfig, port uint16) bool {
 
-	dstip := s.host
+	dstip := config.host
 	dstport := layers.TCPPort(port)
 	srcip, sport := localIPPort(dstip)
 	srcport := layers.TCPPort(sport)
@@ -118,16 +70,15 @@ func (s *synScanner) checker(port uint16) bool {
 	}
 
 	// Set deadline so we don't wait forever.
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(config.timeout)); err != nil {
 		log.Println(err)
 		return false
 	}
-
 	buffer := make([]byte, 4096)
 	for {
 		n, addr, err := conn.ReadFrom(buffer)
 		if err != nil {
-			log.Println("error reading packet: ", err)
+			// log.Println("error reading packet: ", err)
 			return false
 		} else if addr.String() == dstip.String() {
 			// Decode a packet

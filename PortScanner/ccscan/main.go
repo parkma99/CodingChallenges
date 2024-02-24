@@ -43,11 +43,11 @@ func main() {
 		if scanner == nil {
 			return
 		}
-		err := scanner.new(host, timeout, ports, parallel)
+		config, err := newConfig(host, timeout, ports, parallel)
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
-		opened, err := scanner.scan()
+		opened, err := scan(scanner, config)
 		if err != nil {
 			continue
 		}
