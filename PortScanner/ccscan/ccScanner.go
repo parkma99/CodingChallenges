@@ -1,13 +1,20 @@
 package main
 
-import "time"
+import "strings"
 
 type ccScanner interface {
-	new(host string, timeout int) error
+	new(host string, timeout int, ports []uint16, parallel int) error
 	checker(port uint16) bool
+	scan() ([]uint16, error)
 }
 
-type scannerConfig struct {
-	host    string
-	timeout time.Duration
+func createScanner(scanType string) ccScanner {
+	switch strings.ToLower(scanType) {
+	case "tcp":
+		return &tcpScanner{}
+	case "syn":
+		return &synScanner{}
+	default:
+		return nil
+	}
 }

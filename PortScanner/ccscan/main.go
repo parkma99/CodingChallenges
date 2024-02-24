@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"strings"
 )
 
 const MAX_TIMEOUT_MS = 50000
@@ -44,11 +43,11 @@ func main() {
 		if scanner == nil {
 			return
 		}
-		err := scanner.new(host, timeout)
+		err := scanner.new(host, timeout, ports, parallel)
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
-		opened := startScanner(scanner, ports, parallel)
+		opened, err := scanner.scan()
 		if err != nil {
 			continue
 		}
@@ -59,50 +58,4 @@ func main() {
 			fmt.Println(port, "is opened")
 		}
 	}
-}
-func createScanner(scanType string) ccScanner {
-	switch strings.ToLower(scanType) {
-	case "tcp":
-		return &tcpScanner{}
-	case "syn":
-		return &synScanner{}
-	default:
-		return nil
-	}
-}
-func startScanner(s ccScanner, checkPorts []uint16, parallel int) (ports []uint16) {
-	parallelNum := len(checkPorts)
-	if parallel > 0 && parallel < parallelNum {
-		parallelNum = parallel
-	}
-	inputs := make(chan uint16, 100)
-	results := make(chan uint16)
-
-	for i := 0; i < parallelNum; i++ {
-		go func(ports <-chan uint16, result chan<- uint16) {
-			for port := range ports {
-				opened := s.checker(port)
-				if opened {
-					result <- port
-				} else {
-					result <- 0
-				}
-			}
-		}(inputs, results)
-	}
-	go func() {
-		for _, p := range checkPorts {
-			inputs <- p
-		}
-	}()
-
-	for i := 0; i < len(checkPorts); i++ {
-		port := <-results
-		if port != 0 {
-			ports = append(ports, port)
-		}
-	}
-	close(inputs)
-	close(results)
-	return
 }
