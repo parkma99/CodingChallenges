@@ -1,4 +1,4 @@
-module ccscan
+module codingchallenges
 
 go 1.22.0
 
