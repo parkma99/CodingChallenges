@@ -1,130 +1,108 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"net"
-	"net/netip"
-	"os"
+	"sort"
 	"strings"
-	"time"
 )
 
-const MAX_TIMEOUT_MS = 1000
-const MAX_PARALLEL_NUM = 100
-const MAX_PORT = 65536
+const MAX_TIMEOUT_MS = 50000
+const MAX_PARALLEL = 100
+const MAX_PORT = 65535
+const DEFAULT_TYPE = "TCP"
 
-var timeout int
-var parallel_num int
-
-func cidr(cidr string) ([]string, error) {
-	prefix, err := netip.ParsePrefix(cidr)
-	if err != nil {
-		return nil, err
-	}
-	var ips []string
-	for addr := prefix.Addr(); prefix.Contains(addr); addr = addr.Next() {
-		ips = append(ips, addr.String())
-	}
-	if len(ips) < 2 {
-		return ips, nil
-	}
-	return ips[:len(ips)-1], nil
-}
-
-type hostList []string
-
-func (hl *hostList) String() string {
-	return strings.Join(*hl, ",")
-}
-
-func (hl *hostList) Set(value string) error {
-	hosts := strings.Split(strings.TrimSpace(value), ",")
-	new_hl := make([]string, 0)
-	for _, host := range hosts {
-		host = strings.TrimSpace(host)
-		log.Println(host)
-		if strings.Contains(host, "/") {
-			matches, err := cidr(host)
-			if err != nil {
-				continue
-			}
-			new_hl = append(new_hl, matches...)
-		} else {
-			new_hl = append(new_hl, host)
-		}
-	}
-	log.Println(new_hl)
-	*hl = new_hl
-	return nil
-}
-
-func cmd() (hostList, int, error) {
+func main() {
 	var hosts hostList
-	var port int
+	var port uint
+	var scanType string
+	var timeout int
+	var parallel int
 	flag.Var(&hosts, "host", "host to connect")
-	flag.IntVar(&port, "port", 0, "port to connect")
+	flag.UintVar(&port, "port", 0, "port to connect")
 	flag.IntVar(&timeout, "timeout", MAX_TIMEOUT_MS, "max timeout microsecond")
-	flag.IntVar(&parallel_num, "parallel", MAX_PARALLEL_NUM, "max parallel number")
+	flag.IntVar(&parallel, "parallel", MAX_PARALLEL, "max parallel number")
+	flag.StringVar(&scanType, "type", DEFAULT_TYPE, "scanner type, syn need root")
 	flag.Parse()
 	if len(hosts) == 0 {
-		return []string{}, port, errors.New("parse flag error")
-	}
-	return hosts, port, nil
-}
-
-func tryCreateTCPConnect(host string, port int) {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), time.Duration(timeout)*time.Microsecond)
-	if err != nil {
 		return
 	}
-	conn.Close()
-	fmt.Printf("Port: %d is open\n", port)
-}
-func main() {
-	hosts, port, err := cmd()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
+
+	ports := make([]uint16, 0)
 	if port != 0 {
-		for _, host := range hosts {
-			fmt.Fprintf(os.Stdout, "Scanning host: %s port: %d\n", []any{host, port}...)
-			tryCreateTCPConnect(host, port)
-		}
-
+		ports = []uint16{uint16(port)}
 	} else {
-		for _, host := range hosts {
-			parallel_scan(host)
+		for i := range MAX_PORT {
+			ports = append(ports, uint16(i+1))
 		}
-
+	}
+	log.Println(hosts)
+	for _, host := range hosts {
+		fmt.Println("scanning ", host)
+		scanner := createScanner(scanType)
+		if scanner == nil {
+			return
+		}
+		err := scanner.new(host, timeout)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		opened := startScanner(scanner, ports, parallel)
+		if err != nil {
+			continue
+		}
+		sort.Slice(opened, func(i, j int) bool {
+			return opened[i] < opened[j]
+		})
+		for _, port := range opened {
+			fmt.Println(port, "is opened")
+		}
 	}
 }
+func createScanner(scanType string) ccScanner {
+	switch strings.ToLower(scanType) {
+	case "tcp":
+		return &tcpScanner{}
+	case "syn":
+		return &synScanner{}
+	default:
+		return nil
+	}
+}
+func startScanner(s ccScanner, checkPorts []uint16, parallel int) (ports []uint16) {
+	parallelNum := len(checkPorts)
+	if parallel > 0 && parallel < parallelNum {
+		parallelNum = parallel
+	}
+	inputs := make(chan uint16, 100)
+	results := make(chan uint16)
 
-func parallel_scan(host string) {
-	fmt.Printf("Scanning host: %s \n", host)
-	low := 0
-	high := 0
-	step := MAX_PORT / parallel_num
-	done := make(chan bool)
-	for range parallel_num {
-		low = high + 1
-		if low > MAX_PORT {
-			break
-		}
-		high = low + step
-		if high >= MAX_PORT {
-			high = MAX_PORT
-		}
-		go func(low, high int) {
-			for i := low; i <= high; i++ {
-				tryCreateTCPConnect(host, i)
+	for i := 0; i < parallelNum; i++ {
+		go func(ports <-chan uint16, result chan<- uint16) {
+			for port := range ports {
+				opened := s.checker(port)
+				if opened {
+					result <- port
+				} else {
+					result <- 0
+				}
 			}
-			done <- true
-		}(low, high)
+		}(inputs, results)
 	}
-	for range parallel_num {
-		<-done
+	go func() {
+		for _, p := range checkPorts {
+			inputs <- p
+		}
+	}()
+
+	for i := 0; i < len(checkPorts); i++ {
+		port := <-results
+		if port != 0 {
+			ports = append(ports, port)
+		}
 	}
+	close(inputs)
+	close(results)
+	return
 }
