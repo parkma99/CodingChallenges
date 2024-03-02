@@ -36,14 +36,13 @@ func TestParseMessage(t *testing.T) {
 	tests := []struct {
 		in  string
 		msg *IRCMessage
-		ok  bool
 	}{
-		{":*.freenode.net 353 CCIRC = #cc :@CCIRC", &IRCMessage{}, false},
-		{":*.freenode.net NOTICE CCIRC :*** Ident lookup timed out, using ~guest instead.", &IRCMessage{}, false},
-		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP MODE CCIRC :+wRix", &IRCMessage{}, false},
-		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP JOIN :#cc", &IRCMessage{}, false},
-		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP PART :#cc", &IRCMessage{}, false},
-		{":Guest4454!~guest@freenode-kge.qup.pic9tt.IP NICK :JohnC", &IRCMessage{}, false},
+		{":*.freenode.net 353 CCIRC = #cc :@CCIRC", &IRCMessage{Cmd: "353"}},
+		{":*.freenode.net NOTICE CCIRC :*** Ident lookup timed out, using ~guest instead.", &IRCMessage{Cmd: "NOTICE"}},
+		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP MODE CCIRC :+wRix", &IRCMessage{Cmd: "MODE"}},
+		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP JOIN :#cc", &IRCMessage{Cmd: "JOIN"}},
+		{":CCIRC!~guest@freenode-kge.qup.pic9tt.IP PART :#cc", &IRCMessage{Cmd: "PART"}},
+		{":Guest4454!~guest@freenode-kge.qup.pic9tt.IP NICK :JohnC", &IRCMessage{Cmd: "NICK"}},
 	}
 
 	for i, test := range tests {
