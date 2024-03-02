@@ -21,11 +21,12 @@ func main() {
 				if message.Cmd == "PING" {
 					conn.InputCmdChan <- fmt.Sprintf("PONG :%s\r\n", message.Args[0])
 				} else if message.Cmd != "372" {
-					log.Println("send to tui", message.Raw)
+					// log.Println("send to tui", message.Raw)
 					p.Send(*message)
 				}
 			}
 		}
+		p.Send(tea.KeyMsg(tea.Key{Type: tea.KeyEsc}))
 	}()
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)

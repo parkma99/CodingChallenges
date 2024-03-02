@@ -86,7 +86,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		}
 	case IRCMessage:
-		m.messages = append(m.messages, m.senderStyle.Render(msg.Nick)+strings.Join(msg.Args, " "))
+		m.messages = append(m.messages, m.senderStyle.Render(msg.Host+": ")+strings.Join(msg.Args, " "))
+		if len(m.messages) > 10 {
+			m.messages = m.messages[10:]
+		}
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.textarea.Reset()
 		m.viewport.GotoBottom()

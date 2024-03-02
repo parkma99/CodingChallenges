@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 )
@@ -53,7 +52,6 @@ func closeConnection(conn *connect) {
 		conn.Conn = nil
 		close(conn.InputCmdChan)
 		close(conn.ServerMsgChan)
-		log.Println("exit client graceful")
 	}
 }
 
@@ -65,7 +63,7 @@ func (conn *connect) readMessages() {
 			return
 		}
 		message, err := conn.Reader.ReadString('\n')
-		log.Println(message)
+		// log.Println(message)
 		if err != nil {
 			fmt.Println("Error reading from server:", err)
 			return
@@ -98,6 +96,9 @@ func (conn *connect) writeMessages() {
 }
 
 func (c *connect) parse2Cmd(input string) string {
+	if strings.TrimSpace(input) == "" {
+		return ""
+	}
 	args := strings.Split(input, " ")
 	if len(args) == 0 {
 		return ""
