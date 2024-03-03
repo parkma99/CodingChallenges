@@ -58,13 +58,16 @@ func (rs *redisServer) createShortURLHandler(w http.ResponseWriter, req *http.Re
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	hashed := hash(r.Url + strconv.FormatInt(time.Now().Unix(), 10))
+	hashed := hash(r.Url)
 	for {
 		url, err := rs.store.Get(req.Context(), hashed).Result()
 		if err != nil {
 			break
 		}
-		hashed = hash(url + strconv.FormatInt(time.Now().Unix(), 10))
+		if url == r.Url {
+			break
+		}
+		hashed = hash(r.Url + strconv.FormatInt(time.Now().Unix(), 10))
 	}
 	err = rs.store.Set(req.Context(), hashed, r.Url, rs.expiration).Err()
 	if err != nil {
